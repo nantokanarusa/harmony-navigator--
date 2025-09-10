@@ -1,0 +1,6 @@
+streamlit
+pandas
+numpy
+scipy
+st-gsheets-connection
+bcrypt
