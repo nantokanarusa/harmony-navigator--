@@ -1,0 +1,45 @@
+import streamlit as st
+import re
+import gspread
+from google.oauth2.service_account import Credentials
+from google.auth.transport.requests import Request
+
+st.header("GSHEETS DIAGNOSTICS")
+
+# 1) secrets の存在確認
+if "gcp_service_account" not in st.secrets:
+    st.error("st.secrets に gcp_service_account が見つかりません。secrets.toml の場所とテーブル名を確認してください。")
+else:
+    info = st.secrets["gcp_service_account"]
+    # 2) client_email があるか
+    st.write("client_email present:", "client_email" in info)
+    # 3) private_key フォーマットの簡易チェック
+    pk = info.get("private_key", "")
+    st.write("private_key startswith BEGIN:", pk.strip().startswith("-----BEGIN PRIVATE KEY-----"))
+    st.write("private_key contains newline:", "\\n" in pk or "\n" in pk)
+    # 4) スコープ付きで Credentials を作り、トークンを取得できるかチェック
+    try:
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        creds = Credentials.from_service_account_info(info, scopes=scopes)
+        # refresh してみる（これでトークンが取れるか確認）
+        creds.refresh(Request())
+        st.success("Credentials refresh OK. token length: {}".format(len(creds.token or "")))
+    except Exception as e:
+        st.exception(e)
+
+    # 5) gspread で接続してシートにアクセスできるか
+    try:
+        # シートIDを secrets から取得する例
+        raw = st.secrets.get("connections", {}).get("gsheets", {}).get("spreadsheet", "")
+        # URL なら ID を抽出
+        m = re.search(r"/d/([a-zA-Z0-9-_]+)", raw)
+        sheet_id = m.group(1) if m else raw
+        gc = gspread.authorize(creds)
+        sh = gc.open_by_key(sheet_id)
+        st.success("gspread opened spreadsheet title: {}".format(sh.title))
+    except Exception as e:
+        st.error("gspread open failed")
+        st.exception(e)
